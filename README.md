@@ -10,3 +10,5 @@ https://training.iiif.io/iiif-online-workshop/
 
 https://iiif.io/get-started/how-iiif-works/
 
+Maybe use... https://www.thumbor.org
+
