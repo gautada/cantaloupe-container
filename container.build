@@ -1,0 +1,76 @@
+ARG ALPINE_VERSION=latest
+
+# │ STAGE: BUILD
+# ╰――――――――――――――――――――――――――――――――――――――――――――――――――――――
+FROM gautada/alpine:$ALPINE_VERSION as SOURCE
+ARG CANTALOUPE_VERSION=5.0.6
+ARG CANTALOUPE_BRANCH=v$CANTALOUPE_VERSION
+
+RUN apk add --no-cache maven openjdk21
+
+WORKDIR /opt
+RUN git config --global advice.detachedHead false
+RUN git clone --branch $CANTALOUPE_BRANCH https://github.com/cantaloupe-project/cantaloupe.git
+COPY build.sh /opt/cantaloupe/build.sh
+WORKDIR /opt/cantaloupe
+RUN /opt/cantaloupe/build.sh
+
+# │ STAGE: CONTAINER
+# ╰――――――――――――――――――――――――――――――――――――――――――――――――――――――
+FROM gautada/alpine:$ALPINE_VERSION as CONTAINER
+ARG CANTALOUPE_VERSION=5.0.6
+
+# ╭――――――――――――――――――――╮
+# │ METADATA           │
+# ╰――――――――――――――――――――╯
+LABEL source="https://github.com/gautada/cantaloupe-container.git"
+LABEL maintainer="Adam Gautier <adam@gautier.org>"
+LABEL description="A cantaloupe image server"
+
+# ╭―
+# │ USER
+# ╰――――――――――――――――――――
+ARG USER=cantaloupe
+RUN /usr/sbin/usermod -l $USER alpine
+RUN /usr/sbin/usermod -d /home/$USER -m $USER
+RUN /usr/sbin/groupmod -n $USER alpine
+RUN /bin/echo "$USER:$USER" | /usr/sbin/chpasswd
+
+
+# ╭―
+# │ PRIVILEGES
+# ╰――――――――――――――――――――
+# COPY privileges /etc/container/privileges
+
+# ╭―
+# │ BACKUP
+# ╰――――――――――――――――――――
+# COPY backup /etc/container/backup
+
+
+# ╭―
+# │ ENTRYPOINT
+# ╰――――――――――――――――――――
+COPY entrypoint /etc/container/entrypoint
+
+# ╭――――――――――――――――――――╮
+# │ APPLICATION        │
+# ╰――――――――――――――――――――╯
+RUN /bin/mkdir -p /opt/cantaloupe
+COPY --from=SOURCE /opt/cantaloupe/target/cantaloupe-$CANTALOUPE_VERSION.jar /opt/cantaloupe/cantaloupe-$CANTALOUPE_VERSION.jar
+RUN /bin/ln -fsv /opt/cantaloupe/cantaloupe-$CANTALOUPE_VERSION.jar /opt/cantaloupe/cantaloupe.jar
+RUN /bin/ln -fsv /mnt/volumes/configmaps/cantaloupe.conf /etc/container/cantaloupe.conf
+RUN apk add --no-cache fontconfig msttcorefonts-installer openjdk21-jre-headless openjdk21-static-libs
+RUN update-ms-fonts
+
+# ╭――――――――――――――――――――╮
+# │ CONTAINER          │
+# ╰――――――――――――――――――――╯
+RUN /bin/chown -R $USER:$USER /opt
+USER $USER
+VOLUME /mnt/volumes/backup
+VOLUME /mnt/volumes/configmaps
+VOLUME /mnt/volumes/container
+VOLUME /mnt/volumes/secrets
+VOLUME /mnt/volumes/source
+WORKDIR /home/$USER
